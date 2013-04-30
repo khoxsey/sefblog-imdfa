@@ -1,127 +1,7 @@
 # Copyright: Marc Wildi
-# 15.01.2012
+# 30.07.2012
 # http://blog.zhaw.ch/idp/sefblog
 
-# k1 note: Version I-MDFA_new11.r
-
-#_____________________________________________________________
-
-
-#gdp_q<-gdp
-#x<-xh
-
-
-# New 2012-code: computes spectral estimates based on DFT
-spec_comp<-function(insamp,x,d)
-{
-#insamp<-260-anf+1
-#insamp<-len
-#  K<-(insamp-1)/2
-  weight_func<-NULL#matrix(nrow=K+1,ncol=dim(x)[2])
-
-  if (d==1)
-  {
-    K<-length(periodogram_bp(diff(x[1:insamp,1]), 1, insamp-1)$fourtrans)-1
-    weight_func<-1:(K+1)
-#    if (!GDP_T)
-#    {
-      weight_func<-periodogram_bp(diff(x[1:insamp,1]), 1, insamp-1)$fourtrans
-#    } else
-#    {
-#      weight_func<-periodogram_bp(diff(gdp_q[1:round(insamp/3)]), 1, round(insamp/3)-1)$fourtrans
-#      weight_func<-c(weight_func,rep(0,K+1-length(weight_func)))
-#      weight_func<-weight_func*exp(-1.i*(0:K)*pi*publication_lag/K)
-#    }
-    # explaining variables                            ts.plot(x[1:insamp,1])
-    if (length(weight_func)>1)
-    {
-      for (j in 2:length(x[1,]))  #j<-2
-      {
-    # Since the data is integrated one uses the pseudo-periodogram: diff(data) and d=1
-        weight_func<-cbind(weight_func,periodogram_bp(diff(x[1:insamp,j]), 1, insamp-1)$fourtrans)
-      }
-    }
-  } else
-  {
-    weight_func<-periodogram_bp((x[1:insamp,1]), 0, insamp)$fourtrans
-    K<-length(periodogram_bp(x[1:insamp,1], 0, insamp)$fourtrans)-1
-#    if (!GDP_T)
-#    {
-      weight_func<-periodogram_bp(x[1:insamp,1], 0, insamp)$fourtrans
-#    } else
-#    {
-#      weight_func<-periodogram_bp(gdp_q[1:round(insamp/3)], 0, round(insamp/3))$fourtrans
-#      weight_func<-c(weight_func,rep(0,K+1-length(weight_func)))
-#      weight_func<-weight_func*exp(-1.i*(0:K)*pi*publication_lag/K)
-#    }
-
-
-    # explaining variables                            ts.plot(x[1:insamp,1])
-    if (length(weight_func)>1)
-    {
-      for (j in 2:length(x[1,]))  #j<-2
-      {
-    # Since the data is integrated one uses the pseudo-periodogram: diff(data) and d=1
-        weight_func<-cbind(weight_func,periodogram_bp((x[1:insamp,j]), 0, insamp)$fourtrans)
-      }
-    }
-
-  }
-  dimnames(weight_func)[[2]]<-dimnames(x)[[2]]
-  #weight_func[,1]<-periodogram_bp(diff(gdp[1:insamp]), 1, insamp-1)$fourtrans
-  # if i1<-T then weight_constraint imposes corresponding values of amplitude functions in frequency zero
-
-#  ts.plot(abs(weight_func)[,1])
-  return(list(weight_func=weight_func))
-}
-
-
-
-
-
-
-
-
-
-# DFT (old code but still in use for new 2012-version...)
-periodogram_bp <- function(x, dd, n.pg)
-  {
-    ## Preparations
-    n.fit  <- length(x)
-    xx     <- x[((n.fit-n.pg+1):n.fit)]
-    npg2   <- (n.pg/2)
-    perall <- 0*0:npg2
-    fourtrans<-perall
-    
-    ## Case without a seasonal component
-    if (dd < 3)
-      {
-        for (j in (1:npg2)) #j<-1
-          {
-            fourtrans[j+1] <- xx%*%exp((1:(2*npg2))*1.i*j*pi/npg2)
-            term2 <- (1-exp(j*1.i*pi/npg2))^(dd)
-            fourtrans[j+1] <- fourtrans[j+1]/(1-min(dd,1)+min(1,dd)*term2)
-
-            perall[j+1] <- abs(fourtrans[j+1])^2
-          }
-      }
-
-    ## Case with a seasonal component, special treatment for Pi/6
-    if (dd >= 3)
-      {
-        for (j in (1:npg2)[(-npg2/6)*(1:6)])
-          {
-            fourtrans[j+1] <- xx%*%exp((1:(2*npg2))*1.i*j*pi/npg2)
-            term2 <- abs(1-exp(j*1.i*pi/npg2))^2
-            term3 <- abs(1-exp(12*j*1.i*pi/npg2))^2
-            perall[j+1] <- abs(fourtrans[j+1])/(term2*term3)
-          }
-        perall[(npg2/6)*(1:6)+1] <- max(perall)*100000
-      }
-
-    ## Output
-    return(list(perall=perall,fourtrans=fourtrans))
-  }
 
 
 
@@ -158,15 +38,22 @@ spec_mat_comp<-function(weight_func,L,Lag)
 
 
 
+# Modifications 30.07.2012
+#   1. -The asymmetry entailed by the central-deviance parametrization is avoided by proposing a new parametrization of the cross-sectional regularization
+#      -The function mat_func is affected only
+#      -Search for 30.07.2012 in the code below
+#   2. - I removed all spectral estimation functions because they do not strictly belong to the estimation algorithm: after talking with Kent Hoxsey at JSM/San Diego we'll make a R-package where the spectral estimates (DFT,model-based,HP-based,max-entropy) will be in a separate R-file.
+#   3. -the function MS_decomp_total at the end provides a decomposition of the MSE-norm into Accuracy, Timeliness and Smoothness error components which are discussed in McElroy/Wildi (2012) : you don't necessarily need this decomposition but the new function definitly belongs to this estimation-file
+
+# Modification 06.08.2012: generalizes previous code:
+#    A new parameter grand_mean is introduced
+#    If grand_mean==T then previous grand-mean parametrization results (code prior to 30.07.2012)
+#    If grand_mean==F then new parametrization results (from 30.07.2012 on)
 
 
 
-
-
-
-# New 2012-code: Computes regularization matrices and expresses parameters in central-deviance form
-
-mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,Lag,weight_constraint,shift_constraint)
+# 06.08.2012: new parameter grand_mean in function call
+mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,Lag,weight_constraint,shift_constraint,grand_mean)
 {
   if (Lag>(L-1)/2)
   {
@@ -224,23 +111,43 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
 
   if (length(weight_h_exp[1,])>1)
   {
+
     for (j in 1:max(1,(length(weight_h_exp[1,])-1)))   #j<-1
     {
       Q_smooth[j*L+1:L,j*L+1:L]<-Q_smooth[1:L,1:L]
       Q_decay[j*L+1:L,j*L+1:L]<-Q_decay[1:L,1:L]
     }
-    diag(Q_centraldev_original[1:L,1:L])<-rep(1,L)
+    Q_centraldev_original<-diag(rep(1,L*length(weight_h_exp[1,])))
     diag(Q_centraldev_original[1:L,L+1:L])<-rep(-1,L)
-    for (i in 2:length(weight_h_exp[1,]))
+    for (i in 2:length(weight_h_exp[1,]))   #i<-2
     {
       diag(Q_centraldev_original[(i-1)*L+1:L,1:L])<-rep(1,L)
       diag(Q_centraldev_original[(i-1)*L+1:L,(i-1)*L+1:L])<-rep(1,L)
       diag(Q_centraldev_original[1:L,(i-1)*L+1:L])<-rep(-1,L)
     }
-
     Q_centraldev_original<-solve(Q_centraldev_original)
-    diag(Q_cross[L+1:((length(weight_h_exp[1,])-1)*L),L+1:((length(weight_h_exp[1,])-1)*L)])<-
-    lambda_cross*rep(1,((length(weight_h_exp[1,])-1)*L))
+
+# 06.08.2012: the following if allows for either grand-mean parametrization (I-MDFA version prior to 30.07.2012) or original parameters
+#   If grand_mean==T then the code replicates I-MDFA as released prior 30.07.2012
+#   If grand_mean==F then the new parametrization is used.
+#   Differences between both approaches: see section 7.2 of my elements paper posted on SEFBlog (both codes are identical when no regularization is imposed. Otherwise the later version (grand_mean==F) is logically more consistent becuase it treats all series identically (no asymmetry)).
+    if (grand_mean)
+    {
+      diag(Q_cross[L+1:((length(weight_h_exp[1,])-1)*L),L+1:((length(weight_h_exp[1,])-1)*L)])<-
+      lambda_cross*rep(1,((length(weight_h_exp[1,])-1)*L))
+    } else
+    {
+#30.07.2012:new definition (parametrization) of Q_cross (Lambda_{cross} in the elements-paper)
+      diag(Q_cross)<-1
+      for (i in 1:length(weight_h_exp[1,]))
+      {
+        for (j in 1:L)
+        {
+          Q_cross[(i-1)*L+j,j+(0:(length(weight_h_exp[1,])-1))*L]<-Q_cross[(i-1)*L+j,j+(0:(length(weight_h_exp[1,])-1))*L]-1/length(weight_h_exp[1,])
+        }
+      }
+      Q_cross<-Q_cross*lambda_cross
+    }
   }
 
 # new 21.06.2012: w_eight vector
@@ -254,10 +161,12 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
 #               Therefore the decay regularization does not potentially conflict with filter constraints
       if (Lag<1)
       {
-        w_eight<-c(-(Lag-1)*weight_constraint[1]-shift_constraint[1],Lag*weight_constraint[1]+shift_constraint[1],rep(0,L-2))
+        w_eight<-c(-(Lag-1)*weight_constraint[1]-shift_constraint[1],
+        Lag*weight_constraint[1]+shift_constraint[1],rep(0,L-2))
       } else
       {
-        w_eight<-c(rep(0,Lag),weight_constraint[1]-shift_constraint[1],shift_constraint[1],rep(0,L-Lag-2))
+        w_eight<-c(rep(0,Lag),weight_constraint[1]-shift_constraint[1],
+        shift_constraint[1],rep(0,L-Lag-2))
       }
 
       if (length(weight_h_exp[1,])>1)
@@ -322,15 +231,19 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
           }
         }
       }
-
-
     } else
     {
       w_eight<-rep(0,L*length(weight_h_exp[1,]))
     }
   }
 
-# Here we implement the matrix which links central-deviance parameters and original parameters
+# Here we implement the matrix which links freely determined central-deviance parameters and constrained original parameters
+# In my `elements'-paper t(des_mat) corresponds to A%*%R (R links constrained and unconstrained parameters and A maps central-deviance to original parameters)
+#   Please note that:
+#   1. Here I'm working with central-deviance parameters (in the paper I'm working with original parameters)
+#   2. The same matrix R applies to either parameter set
+#   3. If I work with central-deviance parameters then R maps the freely determined set to the constrained (central-deviance)
+#       and A then maps the constrained (central-deviance) set to original constrained parameters.
 # Modifications 17.04.2012: we generalize the definition of des_mat in the case of i2<-T (i2<-F is OK)
   if (i2)
   {
@@ -514,14 +427,32 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
       }
     }
   }
+
+# 06.08.2012: the following if allows for either grand-mean parametrization (I-MDFA version prior to 30.07.2012) or original parameters
+  if (!grand_mean)
+  {
+# 30.07.2012: patch which does apply A^{-1} to A*R giving R where A and R are defined in my elememts paper
+#and des_mat=A*R i.e.  t(Q_centraldev_original%*%t(des_mat)) is R (called des_mat in my code)
+    des_mat<-t(Q_centraldev_original%*%t(des_mat))
+  }
 # Here we fold all three regularizations (cross, smooth and decay) into a single reg-matrix
 # The smoothness and decay terms address original parameters and must be transformed (by des_mat) in order to
 # conform to the central-deviance parameterization as well as to first (and/or second) order constraints
 
 ## begin new 08.02.2012: the if-loop is new
+
   if ((length(weight_h_exp[1,])>1))
   {
-    reg_t<-(Q_smooth+Q_decay+t(Q_centraldev_original)%*%Q_cross%*%Q_centraldev_original)
+# 06.08.2012: the following if allows for either grand-mean parametrization (I-MDFA version prior to 30.07.2012) or original parameters
+    if (grand_mean)
+    {
+      reg_t<-(Q_smooth+Q_decay+t(Q_centraldev_original)%*%Q_cross%*%Q_centraldev_original)
+    } else
+    {
+#    reg_t<-(Q_smooth+Q_decay+t(Q_centraldev_original)%*%Q_cross%*%Q_centraldev_original)
+# 30.07.2012 The cross-sectional regularization term is now simpler (without A-transformation)
+      reg_t<-(Q_smooth+Q_decay+Q_cross)
+    }
   } else
   {
     reg_t<-(Q_smooth+Q_decay)
@@ -537,7 +468,8 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
 }
 
 
-
+#Q_centraldev_original%*%t(des_mat)
+#solve(Q_centraldev_original)
 
 
 
@@ -557,14 +489,18 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
 # Regularization affect/control smoothness, rate of decay and cross-sectional similarity of filter parameters/weights
 
 # new 21.06.2012: new vector shift_constraint in function call
-mdfa_analytic_new<-function(K,L,lambda,weight_func,Lag,Gamma,expweight,cutoff,i1,i2,weight_constraint,lambda_cross,lambda_decay,lambda_smooth,lin_expweight,shift_constraint)
+
+# 06.08.2012: new parameter grand_mean in function call
+mdfa_analytic_new<-function(K,L,lambda,weight_func,Lag,Gamma,expweight,cutoff,i1,i2,weight_constraint,lambda_cross,lambda_decay,lambda_smooth,lin_expweight,shift_constraint,grand_mean)
 {
+
 # In order to enhance numerical speed this call could be done outside (as long as L and Lag are fixed)
   spec_mat<-spec_mat_comp(weight_func,L,Lag)$spec_mat     #dim(spec_mat[,1])
 # weighting of amplitude function in stopband
   omega_Gamma<-as.integer(cutoff*K/pi)
   if ((K-omega_Gamma+1)>0)
   {
+#    lin_expweight <- FALSE
     if (lin_expweight)
     {
       expweight_vec<-c(rep(1,omega_Gamma),1+rep(expweight,K-omega_Gamma+1))
@@ -595,7 +531,8 @@ mdfa_analytic_new<-function(K,L,lambda,weight_func,Lag,Gamma,expweight,cutoff,i1
 
 # Compute design matrix and regularization matrix
 # new 21.06.2012: new vector shift_constraint in function call
-  mat_obj<-mat_func(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,Lag,weight_constraint,shift_constraint)
+# 06.08.2012: new parameter grand_mean in function call
+  mat_obj<-mat_func(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,Lag,weight_constraint,shift_constraint,grand_mean)
 
   des_mat<-mat_obj$des_mat
   reg_mat<-mat_obj$reg_mat           #dim(des_mat[1:23,1:24])
@@ -607,7 +544,7 @@ mdfa_analytic_new<-function(K,L,lambda,weight_func,Lag,Gamma,expweight,cutoff,i1
   X_new<-t(Re(mat_x))+sqrt(1+Gamma*lambda)*1.i*t(Im(mat_x))
 # xtx can be written either in Conj(X_new)%*%X_new or as below:
   xtx<-t(Re(X_new))%*%Re(X_new)+t(Im(X_new))%*%Im(X_new)
-# The filter restrictions (i1<-T) appear as constants on the right hand-side of the equation:
+# The filter restrictions (i1<-T and/or i2<-T) appear as constants on the right hand-side of the equation:
   xtxy<-t(Re(t(w_eight)%*%spec_mat)%*%Re(t(spec_mat)%*%t(des_mat))+
   Im(t(w_eight)%*%t(t(spec_mat)*sqrt(1+Gamma*lambda)))%*%Im(t(t(t(spec_mat)*sqrt(1+Gamma*lambda)))%*%t(des_mat)))
 # scaler makes scales of regularization and unconstrained optimization `similar'
@@ -713,14 +650,17 @@ mdfa_analytic_new<-function(K,L,lambda,weight_func,Lag,Gamma,expweight,cutoff,i1
 
 
 
-#trffkt<-trffkt_cust
-#weight_func<-weight_func_cust
+
+
+
+
+
+
 
 
 
 MS_decomp_total<-function(Gamma,trffkt,weight_func,cutoff,Lag)     #trffkt<-trffkt_hp         pi/ub
 {
-
   if (!(length(trffkt[,1])==length(weight_func[,1])))
   {
     len_w<-min(length(trffkt[,1]),length(weight_func[,1]))
@@ -747,7 +687,7 @@ MS_decomp_total<-function(Gamma,trffkt,weight_func,cutoff,Lag)     #trffkt<-trff
     len_r<-(length(Gamma)-1)/(len_w-1)
     Gammah<-Gamma[c(1,(1:(len_w-1))*len_r)]
   }
-  
+
 #cbind(Ghh,Gammah)
 
   weight_h<-weight_funch
@@ -800,79 +740,3 @@ MS_decomp_total<-function(Gamma,trffkt,weight_func,cutoff,Lag)     #trffkt<-trff
 
 
 
-
-
-zpc_opt_single_angle<-function(parm_single,al)
-{
-
-  arg<-al$arg
-  Lag<-al$Lag
-  maxpol<-al$maxpol
-  maxamp<-al$maxamp
-  K<-al$K
-  Gamma<-al$Gamma         #ts.plot(Gamma)           #wh1-weight_funchh-weight_h
-  weight_funchh<-al$weight_funchh     #ts.plot(abs(weight_funchh)[,2:4],lty=1:3)
-  opt<-al$opti
-  expweight<-al$expweight
-  lambda<-al$lambda
-  cutoff<-al$cutoff
-  omega_Gamma<-as.integer(cutoff*K/pi)
-  weight_hh<-weight_funchh*(c(rep(1,omega_Gamma),(1:(K-omega_Gamma+1))^(expweight/2)))
-# Rotation of DFT's such such that DFT of target is real (rotation does not alter mean-square error)
-  weight_h<-weight_hh*exp(-1.i*Arg(weight_hh[,1]))  #ts.plot(abs(weight_h)[,2:4],lty=1:3)
-
-  trzpc<-rep(0,K+1)
-  trzpc_agg<-trzpc
-#  parm_single[1]<-min(abs(parm_single[1]),lb)
-#  parm_single[1]<-max(abs(parm_single[1]),ub)
-
-# Length of zero: must be smaller/equal than one  and positive
-  parm_single[1]<-min(1,abs(parm_single[1]))
-# length of pole: not larger than maxpol (avoid instability) and positive
-  parm_single[2]<-min(maxpol,abs(parm_single[2]))
-# Normalization: must be positive
-  parm_single[3]<-abs(parm_single[3])
-# zpc transferfunction
-  Z<-parm_single[1]*exp(1.i*arg)
-  P<-parm_single[2]*exp(1.i*arg)
-  trzpc<-parm_single[3]*((1-Z*exp(1.i*pi*(0:K)/K))*(1-Conj(Z)*exp(1.i*pi*(0:K)/K)))/
-    ((1-P*exp(1.i*pi*(0:K)/K))*(1-Conj(P)*exp(1.i*pi*(0:K)/K)))
-# Compute aggregate transferfunction for convolution
-  for (i in 1:(length(weight_funchh[1,])-1))     #Lag<-0
-  {
-    trzpc_agg<-trzpc_agg+trzpc*weight_h[,i+1]  #ts.plot(abs(weight_h)[,2:4],lty=1:9)
-  }          #ts.plot(abs(trzpc_agg),lty=1:9)
-
-  ts_0<--(2*Re(Z)-2)/((Z-1)*(Conj(Z)-1))+(2*Re(P)-2)/((P-1)*(Conj(P)-1))
-
-# ZPC are thought as a complement to MA-filters: If MA are OK then ZPC should be an identity
-# Therefore:
-#    -too large a value of the amplitude is to be avoided
-#    -higher maximum of amplitude in high-frequency stop-band than in lowpass is to be avoided
-#  maxamp_zpc<-max(apply(abs(trzpc),2,max))
-#  maxamp_zpc_high<-apply(abs(trzpc)[as.integer(cutoff*K/pi+1):(K+1),],2,max)
-#  maxamp_zpc_low<-apply(abs(trzpc)[-(as.integer(cutoff*K/pi+1):(K+1)),],2,max)
-# ts.plot(abs(trzpc))
-
-#  if (sum(c(maxamp_zpc>maxamp,maxamp_zpc_high>20))>0)
-#  {
-#    crit<-1.e+90
-#  } else
-#  {
-
-# Same criterion as I-MDFA
-    crit<-sum(abs(Gamma*weight_h[,1]-Re(exp(-Lag*1.i*pi*(0:K)/K)*trzpc_agg)-
-    sqrt(1+Gamma*lambda)*1.i*Im(exp(-Lag*1.i*pi*(0:K)/K)*trzpc_agg))^2)/(2*(K+1)^2)
-
-#  }
-  #ts.plot(cbind(abs(weight_h[,1]),abs(weight_func[,1])),lty=1:2)
-  # ts.plot(cbind(abs(Gamma*weight_h[,1]),abs(trzpc_agg)),lty=1:2)
-  # ts.plot(cbind(abs(Gamma*weight_h[,1]),abs(apply(wh1[,2:9]*trzpc,1,sum))),lty=1:2)
-  if (opti)
-  {
-    return(crit=crit)
-  } else
-  {
-    return(list(crit=crit,trzpc=trzpc,trzpc_agg=trzpc_agg,ts_0=ts_0))
-  }
-}
