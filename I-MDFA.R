@@ -38,7 +38,8 @@ spec_mat_comp<-function(weight_func,L,Lag)
 
 
 
-# Modifications 30.07.2012
+
+# Modifications 30.07.2012 (new parametrization of filter coefficients)
 #   1. -The asymmetry entailed by the central-deviance parametrization is avoided by proposing a new parametrization of the cross-sectional regularization
 #      -The function mat_func is affected only
 #      -Search for 30.07.2012 in the code below
@@ -50,9 +51,22 @@ spec_mat_comp<-function(weight_func,L,Lag)
 #    If grand_mean==T then previous grand-mean parametrization results (code prior to 30.07.2012)
 #    If grand_mean==F then new parametrization results (from 30.07.2012 on)
 
+# Modifications 07.08.2012 (regularization) :
+#   1. We expand the effect of lambda_decay into two terms: the rate of decay (lambda_decay[1]) and the strength of the regularization (lambda_decay[2])
+#   2. We disentangle L from the strength of the regularization by normlizing all matrices by their traces
+
+# Modifications 09.08.2012 (regularization) :
+# We normalize terms multiplied by des_mat in order to disentangle i1/i2 effects on the regularization troika
+
+# 13.08.2012
+# We parametrize the weights assigned to the regularization troika in such a way that the value 0 is zero_weight (no regularization) and that 1 is maximum weight (full shrinkage i.e. data is irrelevant). This is achieved with the tan-function which maps [0,pi] to the positive real numbers
+# For lambda_decay[1] (shape of regularization) we impose a positive value smaller or equal than 1
+
+# 16.08.2012: regularization works for univariate case too (in the inivariate case some matrices/vectors were not defined in the previous code)
 
 
-# 06.08.2012: new parameter grand_mean in function call
+
+
 mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,Lag,weight_constraint,shift_constraint,grand_mean)
 {
   if (Lag>(L-1)/2)
@@ -60,9 +74,14 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
     print("Lag larger than L/2!!!!! Will be trimmed automtically to L/2 (symmetric filter)")
     Lag<-as.integer(L/2)
   }
-  lambda_smooth<-abs(lambda_smooth)
-  lambda_cross<-abs(lambda_cross)
-  lambda_decay<-abs(lambda_decay)
+# 13.08.2012
+# We parametrize the weights assigned to the regularization troika in such a way that the value 0 is zero_weight (no regularization) and that 1 is maximum weight (full shrinkage i.e. data is irrelevant)
+# For lambda_decay[1] (shape of regularization) we impose a positive value smaller or equal than 1
+
+  lambda_smooth<-100*tan(min(abs(lambda_smooth),0.999999)*pi/2)
+  lambda_cross<-100*tan(min(abs(lambda_cross),0.999999)*pi/2)
+  lambda_decay<-c(min(abs(lambda_decay[1]),1),100*tan(min(abs(lambda_decay[2]),0.999999)*pi/2))
+
 # The smoothness and decay regularization are conveniently (rightly) implemented on original parameters
 # The Q_smooth and Q_decay matrices address regularizations for original unconstrained parameters (Therefore dimension L^2)
 # At the end, the matrix des_mat is used to map these regularizations to central-deviance parameters
@@ -77,32 +96,38 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
 # and then maped back to central-deviance with constraint (dim L-1) with des_mat (mathematically unnecessarily complicate but more convenient to implement in code).
     Q_cross<-matrix(data=rep(0,((L)*length(weight_h_exp[1,]))^2),nrow=(L)*length(weight_h_exp[1,]),ncol=(L)*length(weight_h_exp[1,]))
     Q_centraldev_original<-matrix(data=rep(0,((L)*length(weight_h_exp[1,]))^2),nrow=(L)*length(weight_h_exp[1,]),ncol=(L)*length(weight_h_exp[1,]))
+  } else
+  {
+# 16.08.2012
+    Q_cross<-NULL
   }
   for (i in 1:L)
   {
 # For symmetric filters or any historical filter with Lag>0 the decay must be symmetric about b_max(0,Lag) zunehmen
-    Q_decay[i,i]<-lambda_decay*(1+lambda_decay)^(2*abs(i-1-max(0,Lag)))
+
+# New 07.08.2012: lambda_decay is now a 2-dim vector: the first component controls for the exponential decay and the second accounts for the strength of the regularization
+    Q_decay[i,i]<-(1+lambda_decay[1])^(2*abs(i-1-max(0,Lag)))
     if(i==1)
     {
-      Q_smooth[i,i:(i+2)]<-lambda_smooth*c(1,-2,1)
+      Q_smooth[i,i:(i+2)]<-c(1,-2,1)
     } else
     {
       if(i==2)
       {
-        Q_smooth[i,(i-1):(i+2)]<-lambda_smooth*c(-2,5,-4,1)
+        Q_smooth[i,(i-1):(i+2)]<-c(-2,5,-4,1)
       } else
       {
         if(i==L)
         {
-          Q_smooth[i,(i-2):i]<-lambda_smooth*c(1,-2,1)
+          Q_smooth[i,(i-2):i]<-c(1,-2,1)
         } else
         {
           if(i==L-1)
           {
-            Q_smooth[i,(i-2):(i+1)]<-lambda_smooth*c(1,-4,5,-2)
+            Q_smooth[i,(i-2):(i+1)]<-c(1,-4,5,-2)
           } else
           {
-            Q_smooth[i,(i-2):(i+2)]<-lambda_smooth*c(1,-4,6,-4,1)
+            Q_smooth[i,(i-2):(i+2)]<-c(1,-4,6,-4,1)
           }
         }
       }
@@ -134,7 +159,7 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
     if (grand_mean)
     {
       diag(Q_cross[L+1:((length(weight_h_exp[1,])-1)*L),L+1:((length(weight_h_exp[1,])-1)*L)])<-
-      lambda_cross*rep(1,((length(weight_h_exp[1,])-1)*L))
+      rep(1,((length(weight_h_exp[1,])-1)*L))
     } else
     {
 #30.07.2012:new definition (parametrization) of Q_cross (Lambda_{cross} in the elements-paper)
@@ -146,8 +171,28 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
           Q_cross[(i-1)*L+j,j+(0:(length(weight_h_exp[1,])-1))*L]<-Q_cross[(i-1)*L+j,j+(0:(length(weight_h_exp[1,])-1))*L]-1/length(weight_h_exp[1,])
         }
       }
-      Q_cross<-Q_cross*lambda_cross
     }
+  } else
+  {
+# 16.08.2012: define matrix for univariate case
+    Q_centraldev_original<-NULL
+  }
+# New 07.08.2012 : the next lines for normalizing the troika are new: disentangle the effect by L
+  Q_decay<-Q_decay*lambda_decay[2]
+  Q_cross<-Q_cross*lambda_cross                   #Qh<-Q_cross
+  Q_smooth<-Q_smooth*lambda_smooth
+  if (lambda_decay[2]>0)
+  {
+# The second parameter in lambda_decay accounts for the strength of the regularization
+    Q_decay<-lambda_decay[2]*(Q_decay/(sum(diag(Q_decay))))
+  }
+  if (lambda_cross>0)
+  {
+    Q_cross<-lambda_cross*(Q_cross/(sum(diag(Q_cross))))
+  }
+  if (lambda_smooth>0)
+  {
+    Q_smooth<-lambda_smooth*(Q_smooth/(sum(diag(Q_smooth))))
   }
 
 # new 21.06.2012: w_eight vector
@@ -179,7 +224,8 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
             w_eight<-c(w_eight,-(Lag-1)*weight_constraint[j]-shift_constraint[j],Lag*weight_constraint[j]+shift_constraint[j],rep(0,L-2))
           } else
           {
-            w_eight<-c(w_eight,c(rep(0,Lag),weight_constraint[j]-shift_constraint[j],shift_constraint[j],rep(0,L-Lag-2)))
+            w_eight<-c(w_eight,c(rep(0,Lag),weight_constraint[j]-shift_constraint[j],
+            shift_constraint[j],rep(0,L-Lag-2)))
           }
         }
       }
@@ -428,8 +474,9 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
     }
   }
 
-# 06.08.2012: the following if allows for either grand-mean parametrization (I-MDFA version prior to 30.07.2012) or original parameters
-  if (!grand_mean)
+# 6.08.2012: the following if allows for either grand-mean parametrization (I-MDFA version prior to 30.07.2012) or original parameters
+# 16.08.2012: the additional condition length(weight_h_exp[1,])>1) is checked
+  if (!grand_mean&length(weight_h_exp[1,])>1)
   {
 # 30.07.2012: patch which does apply A^{-1} to A*R giving R where A and R are defined in my elememts paper
 #and des_mat=A*R i.e.  t(Q_centraldev_original%*%t(des_mat)) is R (called des_mat in my code)
@@ -458,9 +505,17 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
     reg_t<-(Q_smooth+Q_decay)
   }
 
-
+# 09.08.2012  : normalize regularization terms (which are multiplied by des_mat) in order to disentangle i1/i2 effects
   reg_mat<-(des_mat)%*%reg_t%*%t(des_mat)
-  reg_xtxy<-des_mat%*%reg_t%*%w_eight#+t(w_eight)%*%reg_t%*%t(des_mat)
+  if (lambda_smooth+lambda_decay[2]+lambda_cross>0)
+  {
+    disentangle_des_mat_effect<-sum(diag(reg_t))/sum(diag(reg_mat))#sum(apply(reg_mat,1,sum))/sum(apply(reg_t,1,sum))
+    reg_mat<-reg_mat*disentangle_des_mat_effect
+    reg_xtxy<-des_mat%*%reg_t%*%w_eight*(disentangle_des_mat_effect)#+t(w_eight)%*%reg_t%*%t(des_mat)
+  } else
+  {
+    reg_xtxy<-des_mat%*%reg_t%*%w_eight#+t(w_eight)%*%reg_t%*%t(des_mat)
+  }
 
 
 ## end new 08.02.2012
@@ -470,6 +525,13 @@ mat_func<-function(i1,i2,L,weight_h_exp,lambda_decay,lambda_cross,lambda_smooth,
 
 #Q_centraldev_original%*%t(des_mat)
 #solve(Q_centraldev_original)
+
+
+
+
+
+
+
 
 
 
@@ -542,7 +604,7 @@ mdfa_analytic_new<-function(K,L,lambda,weight_func,Lag,Gamma,expweight,cutoff,i1
 # Solve estimation problem in space of b_main and b_dev
   mat_x<-des_mat%*%spec_mat          #dim(mat_x)    dim(spec_mat)   length(w_eight)
   X_new<-t(Re(mat_x))+sqrt(1+Gamma*lambda)*1.i*t(Im(mat_x))
-# xtx can be written either in Conj(X_new)%*%X_new or as below:
+# xtx can be written either in Re(t(Conj(X_new))%*%X_new) or as below:
   xtx<-t(Re(X_new))%*%Re(X_new)+t(Im(X_new))%*%Im(X_new)
 # The filter restrictions (i1<-T and/or i2<-T) appear as constants on the right hand-side of the equation:
   xtxy<-t(Re(t(w_eight)%*%spec_mat)%*%Re(t(spec_mat)%*%t(des_mat))+
@@ -562,46 +624,43 @@ mdfa_analytic_new<-function(K,L,lambda,weight_func,Lag,Gamma,expweight,cutoff,i1
 
 # Modifications 17.04.2012 : the newly defined vector w_eight allows for simple/straightforward adjustment of filter coefficients
   weight_cm<-matrix(w_eight,ncol=(length(weight_h_exp[1,])))
-# Add level constraints (if i1<-F then this matrix is zero)
+# Add level and/or time-shift constraints (if i1<-F and i2<-F then this matrix is zero)
   b<-b+weight_cm
 
 # The following derivations of the DFA-criterion are all equivalent
-# They are identical with rever as calculated at the end of the function except if i1<-T and weight_constraint different from zero
+# They are identical with rever (up to normalization by (2*(K+1)^2))  as calculated at the end of the function except if i1<-T and weight_constraint different from zero
 # In the latter case an additional constant interfers with the estimation
 
 # The target Y in the frequency-domain is the real vector weight_target*Gamma (both vectors are real)
 # The Regression estimate (the smoother) of Y is the following expression:
-  trth<-((X_new)%*%(X_inv%*%t(Re(X_new))))%*%(weight_target*Gamma)
+  trth<-((X_new)%*%(X_inv%*%t(Re(X_new))))%*%(weight_target*Gamma)                    #sum(abs(trth-trt))
 # This expression is identical to trt computed below if lambda=0 (assuming i1<-F or weight_constraint=0); otherwise trth is identical to Re(trt)+1.i*sqrt(1+lambda*Gamma)*Im(trt))
-# The projection matrix is therefore:
-  Proj_mat<-((X_new)%*%(X_inv%*%t(Re(X_new))))              #dim(Proj_mat)
-# The residual projection matrix is
+# The projection matrix (it is a projection for the real part only, see below) is therefore:
+  Proj_mat<-((X_new)%*%(X_inv%*%t(Re(X_new))))              #trth-(Proj_mat)%*%trth
+# The residual projection matrix is (it is a projection for the real part, see below)
   res_mat<-diag(rep(1,dim(Proj_mat)[1]))-Proj_mat
 # DFA criterion: first possibility (all three variants are identical)
   sum(abs(res_mat%*%(weight_target*Gamma))^2)
-#  ts.plot(abs(res_mat%*%(weight_target*Gamma))^2)
-#  acf(abs(res_mat%*%(weight_target*Gamma)))
-# Residuals
+# Residuals (DFT of filter error): in contrast to OLS this is not iid (weighted regression in frequency-domain)
   resi<-res_mat%*%(weight_target*Gamma)
 # DFA criterion: second possibility
   t(Conj(resi))%*%resi
   t((weight_target*Gamma))%*%(t(Conj(res_mat))%*%(res_mat))%*%(weight_target*Gamma)
-
-#  sum(diag(res_mat))
-#  sum(diag(t(res_mat%*%Conj(res_mat))))
-
 # The interesting `effective degrees of freedom' used here emphasizes an unbiased estimate of the mean-square residual
 #    See  http://en.wikipedia.org/wiki/Degrees_of_freedom_(statistics) (effective degrees of freedom: the expression tr((I-H)(I-H)')
 #    Note that res_mat=I-H see above
 #    Then (Y-Y^)(Y-Y^)/tr((I-H)(I-H)') is an unbiased estimate of the mean-square residual error (in our case Y=weight_target*Gamma. see above)
 #    This correcting `effective degrees of freedom' can then be used to implement a generalized AIC, see below
-#    Neither of the other proposed definitions of `effective degrees of freedom' on Wiki-site tackle this problem (in particular the trace of the smoothing operator is not what we want!!!!)
   degrees_freedom<-2*Re(sum(diag(t(Conj(res_mat))%*%(res_mat))))-1
+# Note that res_mat is a projection matrix with regards to the real part (but not with respect to the imaginary part)
+# Thus we could replace diag(t(Conj(res_mat))%*%(res_mat)) by diag(res_mat) in the degrees_freedom above i.e. the following expression equates to zero:
+  Re(t(Conj(res_mat))%*%(res_mat))-Re(res_mat)
   freezed_degrees<-2*K+1-degrees_freedom
-#  degrees_freedom<-K-Re(sum(diag(Proj_mat)))
+# This is an alternative (identical) expression for the freezed_degreees
+  2*Re(sum(diag(Proj_mat)))
+
 # DFA Criterion: third possibility (here an additional normalization by 1/(2*(K+1)^2))
   sum(abs(Gamma*weight_target-trth)^2)
-
 
 #ts.plot(b)
   # Transferfunction
