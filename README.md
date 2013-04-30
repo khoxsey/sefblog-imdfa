@@ -2,7 +2,7 @@ sefblog-imdfa
 =============
 
 I-MDFA
-
+======
 
 This is a tracking repository for the
 [MDFA code](http://blog.zhaw.ch/idp/sefblog/index.php?/archives/241-A-New-Category-I-MDFA-Code-Repository.html)
